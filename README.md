@@ -197,52 +197,65 @@ This workflow triggers on pushes to the `master` branch and updates the Lambda f
 
 ### Integration Setup
 
-1. **Enable OIDC for the Repository**:
-   - In the AWS IAM Console, create a role with a trust relationship for GitHub's OIDC provider.
-   - Grant permissions for:
-      - S3 operations (e.g., `s3:PutObject`, `s3:GetObject`).
-      - Updating Lambda code (`lambda:UpdateFunctionCode`).
-   - Remember the role's ARN and add it as a repository secret `CICD_ROLE_ARN` in GitHub .
+1. **Enable OIDC for GitHub Actions**:
+   Follow these steps to configure the AWS Identity Provider and create the required IAM role for your GitHub repository:
+
+   #### Create an Identity Provider in AWS:
+    1. Open the **AWS Management Console** and navigate to the **IAM** service.
+    2. In the left navigation pane, select **Identity Providers**.
+    3. Click **Add provider** and choose the following settings:
+        - **Provider type**: OpenID Connect.
+        - **Provider URL**: `https://token.actions.githubusercontent.com`.
+        - **Audience**: `sts.amazonaws.com`.
+    4. Complete the setup to create the OIDC Identity Provider.
+
+   #### Create an IAM Role for GitHub Actions:
+    1. Navigate to the **IAM Roles** section in the AWS Management Console and click **Create Role**.
+    2. Choose the **Custom trust policy** option and enter the following JSON trust policy to allow GitHub Actions to assume the role:
+       ```json
+       {
+           "Version": "2012-10-17",
+           "Statement": [
+               {
+                   "Effect": "Allow",
+                   "Principal": {
+                       "Federated": "arn:aws:iam::<AWS_ACCOUNT_ID>:oidc-provider/token.actions.githubusercontent.com"
+                   },
+                   "Action": "sts:AssumeRoleWithWebIdentity",
+                   "Condition": {
+                       "StringEquals": {
+                           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+                           "token.actions.githubusercontent.com:sub": "repo:<GITHUB_ORG>/<GITHUB_REPO>:ref:refs/heads/master"
+                       }
+                   }
+               }
+           ]
+       }
+       ```
+        - Replace `<AWS_ACCOUNT_ID>` with your AWS account ID.
+        - Replace `<GITHUB_ORG>` with your GitHub organization or username.
+        - Replace `<GITHUB_REPO>` with your repository name.
+    3. Click **Next** and attach the necessary policies:
+        - **AmazonS3FullAccess** (or a custom policy with `s3:PutObject` and `s3:GetObject` for specific buckets).
+        - **AWSLambda_FullAccess** (or a custom policy with `lambda:UpdateFunctionCode` for specific functions).
+    4. Name the role (e.g., `GitHubOIDC-LambdaRole`) and complete the setup.
+    5. Copy the role's ARN (e.g., `arn:aws:iam::<AWS_ACCOUNT_ID>:role/GitHubOIDC-LambdaRole`).
 
 2. **Add GitHub Repository Secrets**:
-   - Add the following secrets to your repository (`GitHub -> <your repo> -> Settings -> Secrets and variables -> Actions -> New repository secret`):
-      - `AWS_REGION`: The AWS region (e.g., `us-east-1`).
-      - `S3_BUCKET`: Name of your S3 bucket (the same you created via Terraform above).
-      - `LAMBDA_FUNCTION_NAME`: Name of your Lambda function.
-      - `CICD_ROLE_ARN`: The ARN of the OIDC IAM role.
+    - Go to `GitHub -> Your Repository -> Settings -> Secrets and variables -> Actions -> New repository secret`.
+    - Add the following secrets:
+        - **`AWS_REGION`**: Your AWS region (e.g., `us-east-1`).
+        - **`S3_BUCKET`**: Name of the S3 bucket used for deployment.
+        - **`LAMBDA_FUNCTION_NAME`**: Name of your Lambda function.
+        - **`CICD_ROLE_ARN`**: The ARN of the OIDC IAM role created above.
 
 3. **Configure the Workflow File**:
-   - Commit the workflow file in `.github/workflows/build-and-upload.yml` in your repository.
+   Commit the `.github/workflows/build-and-upload.yml` file to your repository.
+
+---
 
 **Note:**
-Now every time the changes in the `go` directory are commited to the `master` branch your Lambda function will be updated automatically.
-You can customize the work folder and other triggers to fit your specific requirements.
-
-### Key Workflow Steps
-
-1. **Trigger**:
-   - The workflow is triggered on pushes to the `master` branch, specifically if changes are made in the `go/**` directory.
-
-2. **OIDC Integration**:
-   - The step "Configure AWS Credentials using OIDC" establishes a secure, temporary connection to AWS, avoiding the need for long-term access keys.
-
-3. **Building and Packaging**:
-   - The Go binary is built (`bootstrap`) for Linux using cross-compilation.
-   - The binary is compressed into a ZIP file (`function.zip`) for deployment.
-
-4. **Upload to S3**:
-   - The compressed file is uploaded to a specified S3 bucket using the `aws s3 cp` command.
-
-5. **Lambda Update**:
-   - The Lambda function code is updated using the `aws lambda update-function-code` command, fetching the latest ZIP file from the S3 bucket.
-
-### Benefits of This Approach
-
-- **Security**: Using OIDC eliminates the need for storing static AWS access keys, leveraging secure, temporary tokens.
-- **Automation**: Updates to the repository automatically rebuild the application and refresh the deployed Lambda code.
-- **Efficiency**: Only changes affecting the `go` directory trigger the workflow, optimizing CI/CD runs.
-
-This integration streamlines the deployment process and ensures secure, seamless updates to your Lambda function.
+Once this setup is complete, any changes committed to the `master` branch, particularly within the `go` directory, will trigger the workflow, build the Go application, upload the ZIP file to the specified S3 bucket, and update the Lambda function code automatically. You can further customize the triggers, workflow directory, or other parameters as needed.
 
 ## Contributing
 
