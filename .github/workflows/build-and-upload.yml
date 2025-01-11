@@ -1,0 +1,58 @@
+name: Build and Upload to S3
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - go/**
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-and-upload:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: go
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Go environment
+        uses: actions/setup-go@v4
+        with:
+          go-version: 1.23.2
+
+      - name: Install dependencies
+        run: |
+          go mod tidy
+
+      - name: Build Go binary
+        run: |
+          GOOS=linux GOARCH=amd64 go build -o bootstrap src/main.go
+
+      - name: Zip the binary
+        run: |
+          zip function.zip bootstrap
+
+      - name: Configure AWS Credentials using OIDC
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          role-to-assume: ${{ secrets.CICD_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Upload file to S3
+        run: |
+          aws s3 cp function.zip s3://${{ secrets.S3_BUCKET }}
+
+      - name: Update Lambda Function Code
+        run: |
+          aws lambda update-function-code \
+            --function-name ${{ secrets.LAMBDA_FUNCTION_NAME }} \
+            --s3-bucket ${{ secrets.S3_BUCKET }} \
+            --s3-key function.zip
