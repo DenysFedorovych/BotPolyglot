@@ -101,7 +101,7 @@ func translateText(text, targetLang, deepLAuthKey string) (string, error) {
 // HandleRequest processes the Telegram webhook and sends a translated response for channel posts
 func HandleRequest(ctx context.Context, request events.APIGatewayProxyRequest) (*events.APIGatewayProxyResponse, error) {
 	// Here is the version printed for debugging purposes
-	log.Printf("Running version: %d", 1)
+	log.Printf("Running version: %d", 0)
 
 	// Validate the X-Telegram-Bot-Api-Secret-Token header
 	botSecret := os.Getenv("BOT_SECRET")
